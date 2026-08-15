@@ -24,7 +24,7 @@ dengan SPF, DKIM, dan DMARC lolos, tanpa menjadi open relay.
 | Aspek | Nilai |
 |---|---|
 | Provider | Tencent Cloud Lighthouse, region International (SG / HK / JKT) |
-| Resource | 2 GB RAM, 4 core |
+| Resource | 2 GB RAM, 2 core |
 | DNS | Cloudflare (punya API token untuk zona terkait) |
 | Sudah terpasang | Docker + nginx (port 80/443 terpakai) |
 | Skala | 2 domain, mailbox sedikit, puluhan email/hari |
