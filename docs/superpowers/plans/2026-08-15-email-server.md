@@ -538,7 +538,7 @@ Nama field pada objek konfigurasi Stalwart v0.16 harus diambil dari server yang 
 
 **Interfaces:**
 - Consumes: `load_env` dari Task 2, container hidup dari Task 3
-- Produces: `scripts/lib/cli.sh` mengekspor fungsi `swcli <args...>` yang menjalankan `stalwart-cli` dengan `--url http://127.0.0.1:8080 --user admin --password "$STALWART_ADMIN_PASS"`.
+- Produces: `scripts/lib/cli.sh` mengekspor fungsi `swcli <args...>` yang menjalankan `stalwart-cli` terhadap `http://127.0.0.1:8080` sebagai user `admin`. (Direvisi setelah review: kredensial dikirim lewat environment `STALWART_URL`/`STALWART_USER`/`STALWART_PASSWORD`, bukan flag `--password`, karena argv kelihatan di `ps aux` dan `/proc/<pid>/cmdline`.)
 
 - [ ] **Step 1: Pasang CLI di server**
 
@@ -555,12 +555,18 @@ Expected: bantuan CLI tercetak dan memuat subcommand `describe`, `query`, `apply
 ```bash
 #!/usr/bin/env bash
 # Thin wrapper so every script talks to the local admin endpoint the same way.
+# Credentials go in through the environment, never argv: a --password flag is
+# readable by any local user via `ps aux` and /proc/<pid>/cmdline.
+# The env var names below are UNVERIFIED against the installed binary —
+# confirm with `stalwart-cli --help` (see docs/reference/stalwart-schema.md).
 
 STALWART_URL="${STALWART_URL:-http://127.0.0.1:8080}"
 
 swcli() {
-  stalwart-cli --url "$STALWART_URL" \
-    --user admin --password "$STALWART_ADMIN_PASS" "$@"
+  STALWART_URL="$STALWART_URL" \
+  STALWART_USER="admin" \
+  STALWART_PASSWORD="$STALWART_ADMIN_PASS" \
+    stalwart-cli "$@"
 }
 ```
 

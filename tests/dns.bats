@@ -146,3 +146,72 @@ STUB
   [[ "$envcap" == *"STALWART_PASSWORD=adminpass"* ]]
   [[ "$envcap" == *"STALWART_URL="* ]]
 }
+
+@test "dkim: a record with domainId instead of domain is skipped with a named-field warning and prints no DKIM TXT line" {
+  # Models the schema-mismatch failure mode called out in dns-records.sh:
+  # the live field is actually "domainId", not "domain". This must produce
+  # a warning naming the missing field and must NOT print a DNS line with
+  # an empty/short key (e.g. a bare "p=").
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/stalwart-cli" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+[
+  {
+    "id": "dkim-bad",
+    "domainId": "a.com",
+    "selector": "stalwart",
+    "algorithm": "Ed25519",
+    "publicKey": "MCowBQYDK2VwAyEATESTPUBLICKEYCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+    "privateKey": "-----BEGIN PRIVATE KEY-----MC4CAQAwBQYDK2VwBCIEITESTPRIVATEKEYSHOULDNEVERLEAKzzzzzzzzzz-----END PRIVATE KEY-----"
+  }
+]
+JSON
+STUB
+  chmod +x "$TMP/bin/stalwart-cli"
+
+  run bash -c "cd '$TMP'; PATH='$TMP/bin':\$PATH $RUN_ENV bash scripts/dns-records.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PERINGATAN"* ]]
+  [[ "$output" == *"domain"* ]]
+  [[ "$output" != *"v=DKIM1"* ]]
+  [[ "$output" != *"_domainkey"* ]]
+  [[ "$output" != *"TESTPUBLICKEYCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"* ]]
+  [[ "$output" != *"TESTPRIVATEKEYSHOULDNEVERLEAK"* ]]
+}
+
+@test "dkim: a malformed record is skipped with a warning while a well-formed record in the same payload still prints" {
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/stalwart-cli" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+[
+  {
+    "id": "dkim-bad",
+    "domainId": "a.com",
+    "selector": "stalwart",
+    "algorithm": "Ed25519",
+    "publicKey": "MCowBQYDK2VwAyEATESTPUBLICKEYCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+    "privateKey": "-----BEGIN PRIVATE KEY-----shouldneverleak1-----END PRIVATE KEY-----"
+  },
+  {
+    "id": "dkim-good",
+    "domain": "b.com",
+    "selector": "stalwart",
+    "algorithm": "Ed25519",
+    "publicKey": "MCowBQYDK2VwAyEATESTPUBLICKEYDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+    "privateKey": "-----BEGIN PRIVATE KEY-----shouldneverleak2-----END PRIVATE KEY-----"
+  }
+]
+JSON
+STUB
+  chmod +x "$TMP/bin/stalwart-cli"
+
+  run bash -c "cd '$TMP'; PATH='$TMP/bin':\$PATH $RUN_ENV bash scripts/dns-records.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PERINGATAN"* ]]
+  [[ "$output" == *"stalwart._domainkey.b.com"* ]]
+  [[ "$output" == *"TESTPUBLICKEYDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"* ]]
+  [[ "$output" != *"TESTPUBLICKEYCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"* ]]
+  [[ "$output" != *"shouldneverleak"* ]]
+}
