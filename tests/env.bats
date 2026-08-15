@@ -30,6 +30,8 @@ MAIL_USER_1=hanif@a.com
 MAIL_USER_1_PASS=secret1
 MAIL_APP_USER=noreply@a.com
 MAIL_APP_PASS=secret2
+MAIL_USER_2=second@b.com
+MAIL_USER_2_PASS=secret3
 CF_API_TOKEN=cftoken
 RESEND_API_KEY=re_key
 ADMIN_ALLOW_IP=1.2.3.4
@@ -52,6 +54,8 @@ MAIL_USER_1=hanif@a.com
 MAIL_USER_1_PASS=secret1
 MAIL_APP_USER=noreply@a.com
 MAIL_APP_PASS=secret2
+MAIL_USER_2=second@b.com
+MAIL_USER_2_PASS=secret3
 CF_API_TOKEN=cftoken
 RESEND_API_KEY=re_key
 ADMIN_ALLOW_IP=1.2.3.4
@@ -60,4 +64,26 @@ EOF
   run bash -c "cd '$TMP'; source scripts/lib/env.sh; load_env; echo \"host=\$MAIL_HOSTNAME\""
   [ "$status" -eq 0 ]
   [[ "$output" == *"host=mail.a.com"* ]]
+}
+
+@test "load_env fails when MAIL_USER_2 is empty (second domain must have its own mailbox)" {
+  cat > "$TMP/.env" <<'EOF'
+MAIL_HOSTNAME=mail.a.com
+MAIL_DOMAIN_1=a.com
+MAIL_DOMAIN_2=b.com
+MAIL_ADMIN_EMAIL=admin@a.com
+MAIL_USER_1=hanif@a.com
+MAIL_USER_1_PASS=secret1
+MAIL_APP_USER=noreply@a.com
+MAIL_APP_PASS=secret2
+MAIL_USER_2=
+MAIL_USER_2_PASS=secret3
+CF_API_TOKEN=cftoken
+RESEND_API_KEY=re_key
+ADMIN_ALLOW_IP=1.2.3.4
+STALWART_ADMIN_PASS=adminpass
+EOF
+  run bash -c "cd '$TMP'; source scripts/lib/env.sh; load_env"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"MAIL_USER_2"* ]]
 }

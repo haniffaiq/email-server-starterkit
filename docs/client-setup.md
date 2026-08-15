@@ -121,7 +121,7 @@ Langkah-langkah umum untuk aplikasi email standar Android (seperti Gmail, Samsun
 
 ## Troubleshooting
 
-- **Connection refused**: Pastikan server berjalan (`make up`) dan firewall tidak memblokir port 993 (IMAP) atau 465 (SMTP)
+- **Connection refused**: Pastikan server berjalan (`make up`) dan port 993 (IMAP)/465 (SMTP) terbuka inbound. Untuk port yang dipublikasikan Docker seperti ini, kontrol efektifnya adalah **security group Tencent** (atau firewall level-provider yang setara) — `ufw` di dalam server tidak relevan karena Docker mempublikasikan port lewat chain DNAT sendiri yang bypass rule INPUT host.
 - **Certificate error**: Pastikan hostname di client sesuai dengan `${MAIL_HOSTNAME}` di `.env`
 - **Login failed**: Pastikan username adalah **alamat email lengkap**, bukan hanya bagian sebelum @
 - **Port 465 tidak bekerja?** Gunakan port 587 dengan STARTTLS sebagai alternatif

@@ -162,7 +162,7 @@ Jika 200 pesan per jam tidak cukup, edit `config/plan.json.tpl`:
 
 ### Koneksi ditolak
 - Verifikasi `MAIL_HOSTNAME` benar dan menunjuk ke IP server
-- Pastikan port 465 atau 587 terbuka di firewall security group
+- Pastikan port 465 atau 587 terbuka di **security group Tencent** (atau firewall level-provider yang setara) — bukan `ufw` di dalam server, karena Docker mempublikasikan port lewat chain DNAT sendiri yang bypass rule INPUT host
 
 ### Autentikasi gagal
 - Periksa kembali username dan password (case-sensitive)
