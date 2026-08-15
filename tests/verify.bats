@@ -112,3 +112,117 @@ setup() {
   run grep -q -- '-lt 85' "$REPO_ROOT/scripts/verify.sh"
   [ "$status" -ne 0 ]
 }
+
+# --- smtp_rcpt_response: isolates the RCPT TO reply from a full transcript ---
+#
+# The bug this guards against: extracting the RCPT reply by a fixed line
+# number (`sed -n '3p'`, or any other hardcoded index) is wrong the moment
+# the greeting or the HELO/EHLO reply spans more than one line. These tests
+# feed COMPLETE, realistic transcripts through the extraction function
+# (never pre-isolated strings), and then through the verdict function too.
+
+@test "smtp_rcpt_response isolates RCPT TO reply from a normal 5-line transcript" {
+  transcript=$'220 mail.example.com ESMTP\r\n250 mail.example.com Hello\r\n250 2.1.0 OK\r\n550 5.7.1 Relay not allowed\r\n221 Bye\r\n'
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; smtp_rcpt_response \"\$1\"" _ "$transcript"
+  [ "$status" -eq 0 ]
+  [ "$output" = "550 5.7.1 Relay not allowed" ]
+}
+
+@test "end to end: closed relay (RCPT 550) through extraction + verdict is SAFE" {
+  transcript=$'220 mail.example.com ESMTP\r\n250 mail.example.com Hello\r\n250 2.1.0 OK\r\n550 5.7.1 Relay not allowed\r\n221 Bye\r\n'
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; smtp_relay_verdict \"\$(smtp_rcpt_response \"\$1\")\"" _ "$transcript"
+  [ "$status" -eq 0 ]
+  [ "$output" = "SAFE" ]
+}
+
+@test "end to end: open relay (RCPT 250) through extraction + verdict is OPEN_RELAY" {
+  transcript=$'220 mail.example.com ESMTP\r\n250 mail.example.com Hello\r\n250 2.1.0 OK\r\n250 2.1.5 OK\r\n221 Bye\r\n'
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; smtp_relay_verdict \"\$(smtp_rcpt_response \"\$1\")\"" _ "$transcript"
+  [ "$status" -eq 1 ]
+  [ "$output" = "OPEN_RELAY" ]
+}
+
+@test "end to end: multi-line EHLO reply before RCPT still yields the correct verdict" {
+  transcript=$'220 mail.example.com ESMTP\r\n250-mail.example.com Hello\r\n250-STARTTLS\r\n250 8BITMIME\r\n250 2.1.0 OK\r\n550 5.7.1 Relay not allowed\r\n221 Bye\r\n'
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; smtp_rcpt_response \"\$1\"" _ "$transcript"
+  [ "$status" -eq 0 ]
+  [ "$output" = "550 5.7.1 Relay not allowed" ]
+
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; smtp_relay_verdict \"\$(smtp_rcpt_response \"\$1\")\"" _ "$transcript"
+  [ "$status" -eq 0 ]
+  [ "$output" = "SAFE" ]
+}
+
+@test "end to end: multi-line greeting before RCPT still yields the correct verdict" {
+  transcript=$'220-mail.example.com ESMTP\r\n220 Ready\r\n250 mail.example.com Hello\r\n250 2.1.0 OK\r\n250 2.1.5 OK\r\n221 Bye\r\n'
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; smtp_relay_verdict \"\$(smtp_rcpt_response \"\$1\")\"" _ "$transcript"
+  [ "$status" -eq 1 ]
+  [ "$output" = "OPEN_RELAY" ]
+}
+
+@test "smtp_rcpt_response on a transcript that ends after MAIL FROM prints nothing and fails" {
+  transcript=$'220 mail.example.com ESMTP\r\n250 mail.example.com Hello\r\n250 2.1.0 OK\r\n'
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; smtp_rcpt_response \"\$1\"" _ "$transcript"
+  [ "$status" -eq 1 ]
+  [ "$output" = "" ]
+}
+
+@test "end to end: server closed early (no RCPT reply) is INCONCLUSIVE and never SAFE" {
+  transcript=$'220 mail.example.com ESMTP\r\n250 mail.example.com Hello\r\n250 2.1.0 OK\r\n'
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; smtp_relay_verdict \"\$(smtp_rcpt_response \"\$1\")\"" _ "$transcript"
+  [ "$status" -eq 1 ]
+  [ "$output" = "INCONCLUSIVE" ]
+  [ "$output" != "SAFE" ]
+}
+
+@test "end to end: empty transcript is INCONCLUSIVE and never SAFE" {
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; smtp_relay_verdict \"\$(smtp_rcpt_response \"\$1\")\"" _ ""
+  [ "$status" -eq 1 ]
+  [ "$output" = "INCONCLUSIVE" ]
+  [ "$output" != "SAFE" ]
+}
+
+@test "verify.sh isolates the RCPT reply via smtp_rcpt_response, not a hardcoded sed line number" {
+  run grep -q 'smtp_rcpt_response' "$REPO_ROOT/scripts/verify.sh"
+  [ "$status" -eq 0 ]
+  run grep -q "sed -n '3p'" "$REPO_ROOT/scripts/verify.sh"
+  [ "$status" -ne 0 ]
+}
+
+# --- imap_quote_literal: RFC 3501 quoted-string escaping for the password ---
+
+@test "imap_quote_literal wraps a plain password in double quotes" {
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; imap_quote_literal \"\$1\"" _ "hunter2"
+  [ "$status" -eq 0 ]
+  [ "$output" = "\"hunter2\"" ]
+}
+
+@test "imap_quote_literal preserves a password containing a space" {
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; imap_quote_literal \"\$1\"" _ "pass word"
+  [ "$status" -eq 0 ]
+  [ "$output" = '"pass word"' ]
+}
+
+@test "imap_quote_literal escapes a double quote in the password" {
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; imap_quote_literal \"\$1\"" _ 'pass"word'
+  [ "$status" -eq 0 ]
+  [ "$output" = '"pass\"word"' ]
+}
+
+@test "imap_quote_literal escapes a backslash in the password" {
+  run bash -c "source '$REPO_ROOT/scripts/verify.sh'; imap_quote_literal \"\$1\"" _ 'pass\word'
+  [ "$status" -eq 0 ]
+  [ "$output" = '"pass\\word"' ]
+}
+
+@test "verify.sh sends IMAP commands with CRLF line endings" {
+  run grep -qF '\r\n' "$REPO_ROOT/scripts/verify.sh"
+  [ "$status" -eq 0 ]
+  run grep -qF "a1 LOGIN %s %s\r\na2 LOGOUT\r\n" "$REPO_ROOT/scripts/verify.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "verify.sh quotes the IMAP password instead of interpolating it raw" {
+  run grep -q 'imap_quote_literal "\$MAIL_USER_1_PASS"' "$REPO_ROOT/scripts/verify.sh"
+  [ "$status" -eq 0 ]
+}

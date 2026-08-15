@@ -27,6 +27,8 @@ Repo ini cocok untuk Anda jika:
 | **Docker** | 20.10+ dengan Docker Compose **v2 plugin** | `apt install docker.io docker-compose-plugin` — harus perintah `docker compose` (dua kata), bukan `docker-compose` (v1) lama. `scripts/preflight.sh` mengecek keberadaan plugin ini, bukan binary v1 |
 | **stalwart-cli** | Binary CLI terpisah dari image server | Lihat perintah instalasi di bawah — **tidak** disertakan di dalam image `stalwartlabs/stalwart` |
 | **gettext-base** | Menyediakan `envsubst` | Dipakai `scripts/render-plan.sh` untuk render `plan.json.tpl` |
+| **python3** | Interpreter Python 3 | Dipakai `scripts/render-plan.sh` untuk JSON-escape secrets dan memvalidasi tiap baris hasil render. Biasanya sudah terpasang di Ubuntu/Debian, tapi **jangan diasumsikan** — cek dengan `python3 --version` |
+| **jq** | JSON processor | Dipakai `scripts/dns-records.sh` untuk memproyeksikan output DKIM (public key saja) supaya private key tidak pernah tercetak ke stdout |
 | **dnsutils** | Menyediakan `dig` | Dipakai `scripts/dns-records.sh` dan `scripts/verify.sh` |
 | **netcat-openbsd** | Menyediakan `nc` | Dipakai `scripts/verify.sh` (open-relay test) dan cek port 25 manual |
 | **swaks** | Swiss Army Knife for SMTP | Dipakai untuk uji kirim email manual (lihat bagian `make verify`) |
@@ -39,7 +41,7 @@ Instalasi cepat dependency di Ubuntu/Debian:
 
 ```bash
 sudo apt update
-sudo apt install -y docker.io docker-compose-plugin gettext-base dnsutils netcat-openbsd swaks
+sudo apt install -y docker.io docker-compose-plugin gettext-base python3 jq dnsutils netcat-openbsd swaks
 # bats opsional, hanya jika ingin menjalankan `make test`
 sudo apt install -y bats
 
@@ -114,6 +116,11 @@ MAIL_USER_1_PASS=password-panjang-yang-aman
 # Akun aplikasi untuk relay transaksional
 MAIL_APP_USER=noreply@domain-utama.com
 MAIL_APP_PASS=password-panjang-yang-aman
+
+# Mailbox untuk domain kedua (MAIL_DOMAIN_2) — tanpa ini domain kedua tidak
+# punya mailbox sama sekali. Username harus alamat email lengkap di MAIL_DOMAIN_2.
+MAIL_USER_2=your-name@domain-kedua.com
+MAIL_USER_2_PASS=password-panjang-yang-aman
 
 # Cloudflare API token (izin Zone:DNS:Edit saja)
 CF_API_TOKEN=your_cloudflare_api_token_here
@@ -336,7 +343,7 @@ email-server/
 │  ├─ verify.sh                 # Health check lokal (bukan test kirim/terima end-to-end)
 │  └─ lib/
 │     ├─ env.sh                 # Helper load environment
-│     └─ cli.sh                 # Wrapper swcli (stalwart-cli --url http://127.0.0.1:8080 ...)
+│     └─ cli.sh                 # Wrapper swcli (kredensial lewat env STALWART_URL/STALWART_USER/STALWART_PASSWORD, bukan argv)
 ├─ nginx/
 │  └─ mail.conf                 # Vhost admin UI + IP allowlist
 ├─ tests/

@@ -10,6 +10,19 @@ Artinya nama field di `plan.json.tpl` **bisa saja salah**. Kalau Anda menjalanka
 
 **Aturan yang berlaku: kalau output live `swcli describe` berbeda dari yang ada di `plan.json.tpl`, output live yang benar. Perbaiki template, bukan sebaliknya.**
 
+## Langkah 0 — Verifikasi dulu permukaan CLI itu sendiri (lakukan ini SEBELUM langkah 1 di bawah)
+
+Dokumen ini hati-hati menandai nama object dan field (`Domain`, `Account`, dst di tabel bawah) sebagai provisional — tapi belum pernah memverifikasi nama subcommand CLI (`describe`, `query`, `apply`, `snapshot`) dan, yang jauh lebih penting, **cara `stalwart-cli` menerima kredensial**, terhadap binary yang sungguhan terpasang. Keduanya diasumsikan, bukan dicek.
+
+Ini penting sekali karena, tidak seperti nama field yang provisional (kalau salah, apply gagal validasi dengan error yang jelas), kalau nama environment variable kredensial ini salah, **`swcli` tetap jalan tanpa error yang jelas** — setiap panggilan berjalan tanpa autentikasi (unauthenticated) atau gagal auth diam-diam, dan karena kredensial sengaja tidak lagi ada di argv (lihat catatan keamanan di langkah 2 di bawah), tidak ada apa pun di command line yang bisa jadi petunjuk kenapa. Salah nama field ketahuan cepat; salah nama env var kredensial bisa tidak ketahuan sama sekali sampai Anda curiga kenapa semua describe mengembalikan hasil kosong atau ditolak server.
+
+Sebelum melakukan apa pun di bawah:
+
+1. Jalankan `stalwart-cli --help` (dan `stalwart-cli <subcommand> --help` untuk tiap subcommand yang dipakai repo ini) di host tempat binary terpasang.
+2. Konfirmasi subcommand `describe`, `query`, `apply`, dan `snapshot` benar-benar ada dengan nama itu di build Anda.
+3. Konfirmasi persis bagaimana binary ini menerima kredensial: environment variable (dan nama variabelnya persis apa), file config, atau mekanisme lain.
+4. Bandingkan hasilnya dengan `scripts/lib/cli.sh` — wrapper itu saat ini mengasumsikan `stalwart-cli` membaca `STALWART_URL`, `STALWART_USER`, `STALWART_PASSWORD` dari environment. **Kalau nama variabel yang sebenarnya berbeda, perbaiki `scripts/lib/cli.sh` dulu sebelum lanjut ke langkah 1** — jangan lanjut memakai `swcli` sampai ini dikonfirmasi cocok.
+
 ## Langkah yang harus dilakukan (sekali per server baru)
 
 Ini dilakukan **setelah** `make up` (server sudah jalan) tapi **sebelum** `make plan` pertama kali.
@@ -21,7 +34,15 @@ Ini dilakukan **setelah** `make up` (server sudah jalan) tapi **sebelum** `make 
    source scripts/lib/cli.sh
    ```
 
-   `swcli` adalah host binary `stalwart-cli` yang sudah dibungkus dengan `--url http://127.0.0.1:8080 --user admin --password "$STALWART_ADMIN_PASS"` (lihat `scripts/lib/cli.sh`). Ini satu-satunya mekanisme yang dipakai seluruh script di repo ini untuk bicara ke Stalwart — **bukan** `docker exec stalwart stalwart-cli ...`. Image server (`stalwartlabs/stalwart`) dan CLI (`stalwart-cli`) adalah dua artifact terpisah; CLI tidak ada di dalam image server.
+   `swcli` adalah host binary `stalwart-cli` yang sudah dibungkus supaya kredensial (`STALWART_URL`, `STALWART_USER`, `STALWART_PASSWORD`) dikirim lewat environment variable saat pemanggilan, bukan lewat argv (lihat `scripts/lib/cli.sh`) — sengaja begitu supaya `STALWART_ADMIN_PASS` tidak nongol di `ps aux` atau `/proc/<pid>/cmdline`. Ini satu-satunya mekanisme yang dipakai seluruh script di repo ini untuk bicara ke Stalwart — **bukan** `docker exec stalwart stalwart-cli ...`. Image server (`stalwartlabs/stalwart`) dan CLI (`stalwart-cli`) adalah dua artifact terpisah; CLI tidak ada di dalam image server.
+
+   Contoh pemanggilan langsung (tanpa argv credentials):
+
+   ```bash
+   source scripts/lib/env.sh && load_env
+   source scripts/lib/cli.sh
+   swcli describe Domain --json
+   ```
 
 3. Jalankan `describe` untuk setiap object type yang dipakai `plan.json.tpl`, plus object relay/queue:
 

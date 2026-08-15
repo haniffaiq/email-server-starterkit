@@ -5,10 +5,56 @@
 # Kept free of any I/O so they can be unit-tested (see tests/verify.bats)
 # without a live server, docker, or a .env file.
 
-# Classify a single, already-isolated SMTP RCPT TO response line.
-# Any 2xx code means the server accepted a relay to a foreign domain
-# without authentication — that is an open relay, regardless of which
-# exact wording (e.g. Stalwart's "250 2.1.5 OK") the server used.
+# Isolate the RCPT TO reply from a full SMTP transcript (greeting through
+# QUIT). Positional line indexing (e.g. taking a fixed line number with
+# sed) is wrong the moment any earlier reply spans more than one line, so
+# instead this groups the transcript into individual responses: a line is
+# the last line of its response unless its 4th character is '-' (an SMTP
+# multi-line continuation, e.g. "250-STARTTLS"), and each such group is
+# one reply.
+# The commands this repo sends are, in order: HELO/EHLO, MAIL FROM,
+# RCPT TO, QUIT — so counting from the greeting (index 0), the RCPT TO
+# reply is always response index 3, however many lines each earlier reply
+# took. If fewer than 4 responses were received (e.g. the server closed
+# the connection early), there is no RCPT reply to report.
+# Reads the transcript from $1 if given, otherwise from stdin.
+smtp_rcpt_response() {
+  local transcript
+  if [ "$#" -ge 1 ]; then
+    transcript="$1"
+  else
+    transcript="$(cat)"
+  fi
+
+  local -a responses=()
+  local current=""
+  local line
+  # Process substitution (not a here-string): a here-string unconditionally
+  # appends a trailing newline, which would fabricate a spurious empty
+  # final response whenever the transcript already ends in \r\n. The
+  # `|| [ -n "$line" ]` clause still processes a genuinely unterminated
+  # final line (e.g. the connection was cut mid-response).
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    current="${current:+$current$'\n'}$line"
+    if [ "${line:3:1}" != '-' ]; then
+      responses+=("$current")
+      current=""
+    fi
+  done < <(printf '%s' "$transcript")
+
+  if [ "${#responses[@]}" -lt 4 ]; then
+    return 1
+  fi
+  printf '%s\n' "${responses[3]}"
+}
+
+# Classify a single, already-isolated SMTP RCPT TO response line (see
+# smtp_rcpt_response above for how that line is isolated from a full
+# transcript). Any 2xx code means the server accepted a relay to a
+# foreign domain without authentication — that is an open relay,
+# regardless of which exact wording (e.g. Stalwart's "250 2.1.5 OK") the
+# server used.
 smtp_relay_verdict() {
   local resp="${1:-}"
   if [ -z "$resp" ]; then
@@ -39,6 +85,19 @@ imap_login_verdict() {
   fi
   echo "LOGIN_FAILED"
   return 1
+}
+
+# Encode a raw string as an IMAP quoted-string literal per RFC 3501:
+# backslash and double-quote are backslash-escaped, and the result is
+# wrapped in double quotes. Used for the LOGIN password so that a space
+# or a literal double quote in it cannot break the command line (backslash
+# must be escaped first, otherwise the quote-escaping step's own inserted
+# backslashes would get re-escaped).
+imap_quote_literal() {
+  local s="${1:-}"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  printf '"%s"' "$s"
 }
 
 # --- Main check sequence ----------------------------------------------------
@@ -94,12 +153,15 @@ main() {
   # 4. IMAP login works. LOGIN and LOGOUT use distinct tags (a1/a2) so a
   #    rejected login can't be masked by LOGOUT's unrelated "OK".
   #    Password is passed to openssl, never printed.
+  #    IMAP requires CRLF line endings (a bare LF heredoc is invalid
+  #    protocol framing), and the password is sent as a quoted string
+  #    literal — not interpolated raw — so a space or a double quote in
+  #    it can't break the LOGIN command.
   #    Same NAT-hairpin caveat as the TLS check above applies here (port 993).
-  imap_transcript=$(openssl s_client -connect "${MAIL_HOSTNAME}:993" -quiet 2>/dev/null <<IMAPEOF
-a1 LOGIN ${MAIL_USER_1} ${MAIL_USER_1_PASS}
-a2 LOGOUT
-IMAPEOF
-  )
+  local imap_pass_quoted
+  imap_pass_quoted="$(imap_quote_literal "$MAIL_USER_1_PASS")"
+  imap_transcript=$(printf 'a1 LOGIN %s %s\r\na2 LOGOUT\r\n' "$MAIL_USER_1" "$imap_pass_quoted" \
+          | openssl s_client -connect "${MAIL_HOSTNAME}:993" -quiet 2>/dev/null)
   imap_verdict=$(imap_login_verdict "$imap_transcript")
   if [ "$imap_verdict" = "LOGIN_OK" ]; then
     ok "login IMAP berhasil"
@@ -108,13 +170,14 @@ IMAPEOF
   fi
 
   # 5. Open relay test: relaying to a foreign domain without auth must be
-  #    refused. HELO (not EHLO) keeps every response single-line, so the
-  #    3rd response line unambiguously belongs to RCPT TO — not to a
-  #    catch-all grep over the whole transcript.
+  #    refused. The RCPT TO reply is isolated with smtp_rcpt_response,
+  #    which correlates SMTP responses (collapsing multi-line replies)
+  #    rather than indexing raw text lines — a fixed line number breaks
+  #    the moment the greeting or HELO/EHLO reply spans more than one line.
   if [ "$have_nc" -eq 1 ]; then
     relay_transcript=$(printf 'HELO test\r\nMAIL FROM:<probe@example.org>\r\nRCPT TO:<probe@gmail.com>\r\nQUIT\r\n' \
             | timeout 15 nc 127.0.0.1 25 2>/dev/null)
-    relay_rcpt_resp=$(printf '%s\n' "$relay_transcript" | sed -n '3p')
+    relay_rcpt_resp=$(smtp_rcpt_response "$relay_transcript")
     relay_verdict=$(smtp_relay_verdict "$relay_rcpt_resp")
     case "$relay_verdict" in
       OPEN_RELAY)

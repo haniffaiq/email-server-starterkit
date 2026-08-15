@@ -40,10 +40,29 @@ elif ! command -v jq >/dev/null; then
 else
   source scripts/lib/cli.sh
   DKIM_JSON="$(swcli query DkimSignature --json)"
-  DKIM_TXT="$(printf '%s' "$DKIM_JSON" | jq -r '.[]? | "TXT  " + .selector + "._domainkey." + .domain + "  \"v=DKIM1; k=ed25519; p=" + .publicKey + "\""')"
-  if [ -n "$DKIM_TXT" ]; then
-    printf '%s\n' "$DKIM_TXT"
-  else
+  # Project one JSON record per line first, then inspect .domain/.publicKey
+  # per record in shell rather than folding everything into one jq filter:
+  # jq's `+` treats a missing/null field as an empty operand ("str" + null ==
+  # "str"), so a schema mismatch (e.g. the live field is really "domainId",
+  # not "domain" — see config/plan.json.tpl) would otherwise silently print a
+  # plausible-looking but empty/short DNS line (e.g. "p=") instead of failing.
+  dkim_seen=0
+  while IFS= read -r dkim_rec; do
+    dkim_seen=1
+    dkim_domain="$(printf '%s' "$dkim_rec" | jq -r '.domain // empty')"
+    dkim_pubkey="$(printf '%s' "$dkim_rec" | jq -r '.publicKey // empty')"
+    dkim_selector="$(printf '%s' "$dkim_rec" | jq -r '.selector // empty')"
+    if [ -z "$dkim_domain" ] || [ -z "$dkim_pubkey" ] || [ -z "$dkim_selector" ]; then
+      dkim_missing=""
+      [ -z "$dkim_domain" ] && dkim_missing="domain"
+      [ -z "$dkim_selector" ] && dkim_missing="${dkim_missing:+$dkim_missing, }selector"
+      [ -z "$dkim_pubkey" ] && dkim_missing="${dkim_missing:+$dkim_missing, }publicKey"
+      echo "PERINGATAN: field $dkim_missing kosong pada hasil 'swcli query DkimSignature --json' — kemungkinan nama field skema live berbeda dari yang dipakai skrip ini; cocokkan dengan 'swcli describe DkimSignature --json' lalu perbaiki scripts/dns-records.sh. Baris DKIM ini DILEWATI, bukan dicetak setengah kosong." >&2
+      continue
+    fi
+    printf 'TXT  %s._domainkey.%s  "v=DKIM1; k=ed25519; p=%s"\n' "$dkim_selector" "$dkim_domain" "$dkim_pubkey"
+  done < <(printf '%s' "$DKIM_JSON" | jq -c '.[]?')
+  if [ "$dkim_seen" -eq 0 ]; then
     echo "(belum ada DkimSignature — jalankan 'make plan' dulu)"
   fi
 fi

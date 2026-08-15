@@ -15,7 +15,7 @@ plan: ## Render dan terapkan konfigurasi deklaratif
 dns: ## Cetak record DNS yang harus dipasang
 	bash scripts/dns-records.sh
 
-verify: ## Uji kirim, terima, dan autentikasi email
+verify: ## Health check lokal: container, port 25, sertifikat TLS, login IMAP, penolakan open-relay, record DNS, memori
 	bash scripts/verify.sh
 
 logs: ## Ikuti log container

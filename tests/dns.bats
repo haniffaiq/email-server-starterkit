@@ -79,8 +79,10 @@ STUB
 @test "dkim section shows the public key and never the private key" {
   # Stub stalwart-cli so the DKIM branch actually runs in this test, instead
   # of silently no-op'ing because the real binary isn't installed. This stub
-  # must satisfy the `swcli` wrapper in scripts/lib/cli.sh, which invokes:
-  #   stalwart-cli --url <url> --user admin --password <pass> query DkimSignature --json
+  # must satisfy the `swcli` wrapper in scripts/lib/cli.sh, which invokes
+  # `stalwart-cli query DkimSignature --json` with credentials passed via
+  # the STALWART_URL / STALWART_USER / STALWART_PASSWORD environment
+  # variables, not as --url/--user/--password argv flags.
   mkdir -p "$TMP/bin"
   cat > "$TMP/bin/stalwart-cli" <<'STUB'
 #!/usr/bin/env bash

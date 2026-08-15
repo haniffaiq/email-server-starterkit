@@ -215,3 +215,50 @@ PY
   run grep -c '^#' "$TMP/config/plan.json"
   [ "$output" -eq 0 ]
 }
+
+# --- Fix wave 2, item 1: explicit dependency checks for python3/envsubst ---
+
+# Build a PATH containing only the tools listed, symlinked from their real
+# locations, so we can simulate "python3 not installed" / "envsubst not
+# installed" without touching the host's real toolchain.
+make_minimal_path() {
+  mkdir -p "$TMP/bin"
+  for tool in "$@"; do
+    local real
+    real="$(command -v "$tool" 2>/dev/null)" || continue
+    ln -sf "$real" "$TMP/bin/$tool"
+  done
+}
+
+@test "missing python3 fails with a clear Indonesian message naming the package to install" {
+  make_minimal_path bash grep chmod wc tr cat mkdir cp dirname basename sed cut envsubst
+  run bash -c "cd '$TMP'; PATH='$TMP/bin' bash scripts/render-plan.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"python3"* ]]
+  [[ "$output" != *"command not found"* ]]
+}
+
+@test "missing envsubst fails with a clear Indonesian message naming the package to install" {
+  make_minimal_path bash grep chmod wc tr cat mkdir cp dirname basename sed cut python3
+  run bash -c "cd '$TMP'; PATH='$TMP/bin' bash scripts/render-plan.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"gettext-base"* ]]
+  [[ "$output" != *"command not found"* ]]
+}
+
+# --- Fix wave 2, item 4: a secret that legitimately contains ${...} must not
+# trip the leftover-placeholder guard ---
+
+@test "a secret containing a literal \${...} placeholder does not falsely trip the leftover-placeholder guard" {
+  cat >> "$TMP/.env" <<'EOF'
+MAIL_USER_1_PASS='has ${MAIL_USER_1} literal placeholder'
+EOF
+  run bash -c "cd '$TMP'; bash scripts/render-plan.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"placeholder yang belum tergantikan"* ]]
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    echo "$line" | python3 -c 'import json,sys; json.load(sys.stdin)'
+  done < "$TMP/config/plan.json"
+  grep -F -q 'has ${MAIL_USER_1} literal placeholder' "$TMP/config/plan.json"
+}

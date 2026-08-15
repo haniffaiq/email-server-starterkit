@@ -2,6 +2,18 @@
 # Renders the declarative plan template with values from .env.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# Fail loudly and early instead of dying mid-script on a raw "command not
+# found" that gives the operator no clue which package to install.
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 tidak ditemukan — install paket 'python3' lalu jalankan ulang skrip ini." >&2
+  exit 1
+fi
+if ! command -v envsubst >/dev/null 2>&1; then
+  echo "envsubst tidak ditemukan — install paket 'gettext-base' (Debian/Ubuntu; paket 'gettext' di distro lain) lalu jalankan ulang skrip ini." >&2
+  exit 1
+fi
+
 source scripts/lib/env.sh
 load_env
 
@@ -26,6 +38,34 @@ for var in MAIL_DOMAIN_1 MAIL_DOMAIN_2 MAIL_ADMIN_EMAIL \
   export "$var=$(json_escape "${!var}")"
 done
 
+# A leftover-placeholder guard must scan the TEMPLATE, not the rendered
+# output: once secrets are JSON-escaped and substituted in, a secret can
+# legitimately contain literal `${...}` text (e.g. a password of
+# `has ${MAIL_USER_1} literal placeholder`), and grepping the rendered file
+# for `${` would false-positive on that and abort a render that actually
+# succeeded. Scanning the template instead only fires on a real unhandled
+# placeholder — one this script doesn't know to substitute for.
+check_template_placeholders() {
+  local tpl_file="$1" known="$2" name found k
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    found=0
+    for k in $known; do
+      if [ "$k" = "$name" ]; then
+        found=1
+        break
+      fi
+    done
+    if [ "$found" -eq 0 ]; then
+      echo "template $tpl_file memakai placeholder \${$name} yang tidak ada di daftar variabel render-plan.sh — tambahkan ke VARS lalu jalankan ulang" >&2
+      exit 1
+    fi
+  done < <(grep -vE '^[[:space:]]*(#|$)' "$tpl_file" | grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' | sed -E 's/^\$\{(.*)\}$/\1/' | sort -u)
+}
+
+KNOWN_PLACEHOLDERS="$(printf '%s' "$VARS" | sed -E 's/[${}]//g')"
+check_template_placeholders config/plan.json.tpl "$KNOWN_PLACEHOLDERS"
+
 umask 077
 
 # Strip comment lines (see the reconcile-with-swcli-describe notice at the top
@@ -35,16 +75,12 @@ grep -vE '^[[:space:]]*(#|$)' config/plan.json.tpl | envsubst "$VARS" > config/p
 
 # The webhook path is opt-in: only rendered when the app endpoint is configured.
 if [ -n "${WEBHOOK_URL:-}" ] && [ -f config/plan.webhook.tpl ]; then
+  check_template_placeholders config/plan.webhook.tpl "WEBHOOK_URL"
   export WEBHOOK_URL="$(json_escape "$WEBHOOK_URL")"
   grep -vE '^[[:space:]]*(#|$)' config/plan.webhook.tpl | envsubst '${WEBHOOK_URL}' >> config/plan.json
 fi
 
 chmod 600 config/plan.json
-
-if grep -q '\${' config/plan.json; then
-  echo "masih ada placeholder yang belum tergantikan di config/plan.json" >&2
-  exit 1
-fi
 
 # Belt-and-suspenders on top of the escaping above: every non-empty rendered
 # line must parse as JSON on its own (NDJSON, one operation per line). If it

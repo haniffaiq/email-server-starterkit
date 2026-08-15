@@ -24,7 +24,7 @@
 - HTTP admin Stalwart tidak boleh terjangkau dari internet. Pembatasannya ada di `docker-compose.yml`, yang mempublikasikan port sebagai `127.0.0.1:8080:8080`. Di dalam container listener-nya justru harus bind `0.0.0.0` — loopback container bukan loopback host, dan Docker mem-forward ke IP bridge container, sehingga bind `127.0.0.1` di dalam container membuat admin UI, nginx, dan `stalwart-cli` semuanya menolak koneksi setelah plan pertama diterapkan. (Direvisi setelah review; aturan awal "jangan pernah `0.0.0.0`" keliru untuk konteks container.)
 - Semua record DNS di Cloudflare harus DNS-only (grey cloud).
 - README dan pesan skrip ditulis dalam bahasa Indonesia; komentar kode dan pesan commit dalam bahasa Inggris.
-- Variabel `.env` yang dipakai lintas task, nama persis: `MAIL_HOSTNAME`, `MAIL_DOMAIN_1`, `MAIL_DOMAIN_2`, `MAIL_ADMIN_EMAIL`, `MAIL_USER_1`, `MAIL_USER_1_PASS`, `MAIL_APP_USER`, `MAIL_APP_PASS`, `CF_API_TOKEN`, `RESEND_API_KEY`, `ADMIN_ALLOW_IP`, `STALWART_ADMIN_PASS`.
+- Variabel `.env` yang dipakai lintas task, nama persis: `MAIL_HOSTNAME`, `MAIL_DOMAIN_1`, `MAIL_DOMAIN_2`, `MAIL_ADMIN_EMAIL`, `MAIL_USER_1`, `MAIL_USER_1_PASS`, `MAIL_USER_2`, `MAIL_USER_2_PASS`, `MAIL_APP_USER`, `MAIL_APP_PASS`, `CF_API_TOKEN`, `RESEND_API_KEY`, `ADMIN_ALLOW_IP`, `STALWART_ADMIN_PASS`. (`MAIL_USER_2` ditambahkan setelah review: domain kedua punya MX tapi tidak punya mailbox, jadi semua email ke domain itu ditolak "no such user".)
 
 ---
 
