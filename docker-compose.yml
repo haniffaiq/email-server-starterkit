@@ -1,0 +1,25 @@
+services:
+  stalwart:
+    image: stalwartlabs/stalwart:v0.16
+    container_name: stalwart
+    restart: always
+    # Public mail ports. HTTP admin is bound to loopback only and reached via nginx.
+    ports:
+      - "25:25"
+      - "465:465"
+      - "587:587"
+      - "993:993"
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /opt/mail/etc:/etc/stalwart
+      - /opt/mail/data:/var/lib/stalwart
+    environment:
+      # Fixed admin credentials so bootstrap is reproducible instead of scraping logs.
+      STALWART_RECOVERY_ADMIN: "admin:${STALWART_ADMIN_PASS}"
+      STALWART_PUBLIC_URL: "https://${MAIL_HOSTNAME}"
+    mem_limit: 1200m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

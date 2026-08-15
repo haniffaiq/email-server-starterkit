@@ -24,7 +24,7 @@ dengan SPF, DKIM, dan DMARC lolos, tanpa menjadi open relay.
 | Aspek | Nilai |
 |---|---|
 | Provider | Tencent Cloud Lighthouse, region International (SG / HK / JKT) |
-| Resource | 2 GB RAM, 4 core |
+| Resource | 2 GB RAM, 2 core |
 | DNS | Cloudflare (punya API token untuk zona terkait) |
 | Sudah terpasang | Docker + nginx (port 80/443 terpakai) |
 | Skala | 2 domain, mailbox sedikit, puluhan email/hari |
@@ -146,8 +146,11 @@ verifikasi domain membuat DMARC gagal meski email terkirim.
 - **Bukan open relay.** Port 25 hanya menerima email untuk domain sendiri. Submission di
   465/587 selalu mewajibkan autentikasi. `verify.sh` menjalankan tes open-relay eksplisit
   setiap kali dipanggil, bukan mengandalkan asumsi default aman.
-- **Admin UI tidak terbuka bebas.** Stalwart HTTP bind ke `127.0.0.1:8080` saja; akses
-  lewat nginx dengan IP allowlist. Port 8080 tidak pernah dipublikasikan ke internet.
+- **Admin UI tidak terbuka bebas.** Docker mempublikasikan port admin sebagai
+  `127.0.0.1:8080:8080`, jadi hanya proses di host yang bisa menjangkaunya; akses dari luar
+  lewat nginx dengan IP allowlist. Di dalam container listener-nya bind `0.0.0.0` karena
+  loopback container bukan loopback host — pembatasan aksesnya ada di sisi publish Docker,
+  bukan di sisi bind Stalwart.
 - **Kredensial.** Cloudflare API token dibatasi ke izin `Zone:DNS:Edit` pada zona terkait
   saja. Resend API key dan password admin disimpan di `.env` yang masuk `.gitignore`.
   Plan yang sudah dirender berisi rahasia sehingga juga tidak di-commit; yang di-commit
