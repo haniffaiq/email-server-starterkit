@@ -314,6 +314,7 @@ make verify
 
 ## Dokumentasi Lanjutan
 
+- **[docs/pending.md](docs/pending.md)** — Sisa pekerjaan yang harus dijalankan di server. Mail server belum hidup sampai langkah-langkah ini selesai. **Mulai dari sini.**
 - **[docs/client-setup.md](docs/client-setup.md)** — Setting IMAP/SMTP untuk Apple Mail, Thunderbird, iOS, dan Android.
 - **[docs/app-integration.md](docs/app-integration.md)** — Cara aplikasi mengirim email transaksional. Contoh Node.js dan Python.
 - **[docs/inbound-processing.md](docs/inbound-processing.md)** — Terima email masuk di aplikasi via webhook atau polling IMAP. Contoh Python imaplib.
